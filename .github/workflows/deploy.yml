@@ -10,8 +10,6 @@ env:
   PROJECT_ID: lengolf-operations
   SERVICE_NAME: line-bot
   REGION: asia-northeast1
-  REPOSITORY: line-bot-images  # Artifact Registry repository name
-  LOCATION: asia-northeast1    # Artifact Registry location
 
 jobs:
   deploy:
@@ -30,30 +28,23 @@ jobs:
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v1
 
-    - name: Create Artifact Registry repository if it doesn't exist
-      run: |
-        if ! gcloud artifacts repositories describe $REPOSITORY --location=$LOCATION; then
-          gcloud artifacts repositories create $REPOSITORY --repository-format=docker --location=$LOCATION
-        fi
-
-    - name: Authorize Docker push to Artifact Registry
-      run: |
-        gcloud auth configure-docker $LOCATION-docker.pkg.dev
+    - name: Authorize Docker push
+      run: gcloud auth configure-docker
 
     - name: Build and push Docker image
       run: |
-        docker build -t $LOCATION-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
-        docker push $LOCATION-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+        docker build -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
+        docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
 
     - name: Deploy to Cloud Run
       run: |
         gcloud run deploy ${{ env.SERVICE_NAME }} \
-          --image $LOCATION-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+          --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
           --platform managed \
           --region ${{ env.REGION }} \
           --allow-unauthenticated \
           --set-env-vars="CHANNEL_ACCESS_TOKEN=${{ secrets.CHANNEL_ACCESS_TOKEN }},CHANNEL_SECRET=${{ secrets.CHANNEL_SECRET }},SPREADSHEET_ID=${{ secrets.SPREADSHEET_ID }},LINE_GROUP_IDS=${{ secrets.LINE_GROUP_IDS }}" \
-          --service-account="github-actions@lengolf-operations.iam.gserviceaccount.com"
+          --service-account="github-actions-service-account@lengolf-operations.iam.gserviceaccount.com"
 
     - name: Show deployed service URL
       run: gcloud run services describe ${{ env.SERVICE_NAME }} --platform managed --region ${{ env.REGION }} --format 'value(status.url)' 
