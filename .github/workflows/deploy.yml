@@ -43,7 +43,7 @@ jobs:
           --platform managed \
           --region ${{ env.REGION }} \
           --allow-unauthenticated \
-          --set-env-vars="PORT=8080,NODE_ENV=production,CHANNEL_ACCESS_TOKEN=${{ secrets.CHANNEL_ACCESS_TOKEN }},CHANNEL_SECRET=${{ secrets.CHANNEL_SECRET }},SPREADSHEET_ID=${{ secrets.SPREADSHEET_ID }},LINE_GROUP_IDS=${{ secrets.LINE_GROUP_IDS }},AUTO_START_SCHEDULER=true" \
+          --set-env-vars="NODE_ENV=production,CHANNEL_ACCESS_TOKEN=${{ secrets.CHANNEL_ACCESS_TOKEN }},CHANNEL_SECRET=${{ secrets.CHANNEL_SECRET }},SPREADSHEET_ID=${{ secrets.SPREADSHEET_ID }},LINE_GROUP_IDS=${{ secrets.LINE_GROUP_IDS }},AUTO_START_SCHEDULER=true" \
           --service-account="github-actions-service-account@lengolf-operations.iam.gserviceaccount.com"
 
     - name: Show deployed service URL

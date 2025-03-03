@@ -45,7 +45,7 @@ jobs:
             --platform managed \
             --region $REGION \
             --allow-unauthenticated \
-            --set-env-vars="PORT=8080,NODE_ENV=production" \
+            --set-env-vars="NODE_ENV=production" \
             --update-secrets="CHANNEL_ACCESS_TOKEN=CHANNEL_ACCESS_TOKEN:latest,CHANNEL_SECRET=CHANNEL_SECRET:latest,SPREADSHEET_ID=SPREADSHEET_ID:latest,GOOGLE_APPLICATION_CREDENTIALS_JSON=GOOGLE_APPLICATION_CREDENTIALS_JSON:latest,LINE_GROUP_IDS=LINE_GROUP_IDS:latest" \
             --service-account="github-actions-service-account@$PROJECT_ID.iam.gserviceaccount.com"
 
