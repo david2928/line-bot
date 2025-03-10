@@ -7,19 +7,6 @@ on:
     - cron: '30 1 * * 1'
   # Allow manual triggering for testing
   workflow_dispatch:
-    inputs:
-      sheet_name:
-        description: 'Google Sheet Tab Name'
-        required: false
-        default: 'Last Entry'
-      start_cell:
-        description: 'Start Cell (e.g., A2)'
-        required: false
-        default: 'B12'
-      end_cell:
-        description: 'End Cell Column (e.g., E)'
-        required: false
-        default: 'D'
 
 jobs:
   inventory-update:
