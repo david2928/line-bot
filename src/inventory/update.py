@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Inventory Update Script for GitHub Actions
+Simplified Inventory Update Script for GitHub Actions
 
-This script connects to the LINE API and Google Sheets to generate 
-and send inventory updates to configured LINE groups.
+This script reads a single cell from Google Sheets and sends its content to LINE groups.
 """
 
 import os
@@ -45,176 +44,62 @@ def get_credentials():
             return service_account.Credentials.from_service_account_info(
                 creds_info, scopes=SCOPES)
         except json.JSONDecodeError as e:
-            # If still failing, provide more detailed error
             print(f"Error parsing credentials JSON: {e}")
-            print(f"First 20 characters of credentials: {creds_json[:20]}...")
-            raise ValueError("Invalid Google credentials format. Please ensure it's a valid JSON service account key")
+            raise ValueError("Invalid Google credentials format")
 
-def get_sheet_info():
-    """Get sheet name and range from environment variables or use defaults"""
-    # Get sheet name from environment variable or use default
-    sheet_name = os.environ.get('SHEET_NAME', 'Last Entry')
-    print(f"Using sheet: '{sheet_name}'")
-    
-    # Get start cell from environment variable or use default
-    start_cell = os.environ.get('START_CELL', 'B12')
-    
-    # If end_cell is provided, make a range, otherwise use just the start_cell
-    end_cell = os.environ.get('END_CELL')
-    
-    if end_cell:
-        # If it's just a column letter (like 'D'), append row from start_cell
-        if end_cell.isalpha():
-            # Extract row number from start_cell
-            row_num = ''.join(filter(str.isdigit, start_cell))
-            if row_num:
-                end_cell = f"{end_cell}{row_num}"
-            range_str = f"'{sheet_name}'!{start_cell}:{end_cell}"
-        else:
-            range_str = f"'{sheet_name}'!{start_cell}:{end_cell}"
-    else:
-        # Just use the single cell
-        range_str = f"'{sheet_name}'!{start_cell}"
-    
-    print(f"Using range: {range_str}")
-    return range_str
-
-def list_all_sheets(service, spreadsheet_id):
-    """List all available sheets in the spreadsheet"""
-    try:
-        spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-        sheets = spreadsheet.get('sheets', [])
-        
-        print("Available sheets in this spreadsheet:")
-        for sheet in sheets:
-            print(f"- {sheet['properties']['title']}")
-        
-        return [sheet['properties']['title'] for sheet in sheets]
-    except Exception as e:
-        print(f"Error listing sheets: {str(e)}")
-        return []
-
-def get_inventory_data():
-    """Fetch inventory data from Google Sheets"""
-    print("Getting inventory data from Google Sheets")
+def get_cell_content():
+    """Fetch content of a single cell from Google Sheets"""
+    print("Getting content from Google Sheets")
     
     spreadsheet_id = os.environ.get('SPREADSHEET_ID')
     if not spreadsheet_id:
         raise ValueError("SPREADSHEET_ID environment variable is not set")
     
-    credentials = get_credentials()
+    sheet_name = os.environ.get('SHEET_NAME', 'Last Entry')
+    cell = os.environ.get('START_CELL', 'B12')
     
-    # Create Google Sheets API service
+    range_name = f"'{sheet_name}'!{cell}"
+    print(f"Reading from {range_name}")
+    
+    credentials = get_credentials()
     service = googleapiclient.discovery.build('sheets', 'v4', credentials=credentials)
     
-    # First, list all available sheets to help with troubleshooting
-    available_sheets = list_all_sheets(service, spreadsheet_id)
-    
-    # Get the range to read
-    range_name = get_sheet_info()
-    
     try:
-        # Fetch data from the sheet
         result = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id, range=range_name).execute()
         
-        rows = result.get('values', [])
+        values = result.get('values', [])
         
-        if not rows:
-            print("No data found in the sheet")
-            return []
+        if not values:
+            print("No data found in cell")
+            return "No inventory data available"
         
-        # The structure will depend on whether we're dealing with a range or single cell
-        # For simplicity in this example, we'll create a structure for reorder items
-        # based on the data we find
+        # Extract the single cell value
+        cell_value = values[0][0] if values and values[0] else "No inventory data available"
+        print(f"Cell content: {cell_value}")
         
-        # If it's a single cell or single row
-        if len(rows) == 1 and len(rows[0]) == 1:
-            print(f"Found single cell value: {rows[0][0]}")
-            # Assume this is a number representing items to reorder
-            try:
-                count = int(rows[0][0])
-                return [{"item": "Inventory items", "current_qty": count, "reorder_level": 0}]
-            except (ValueError, TypeError):
-                # If it's not a number, just return it as a message
-                return [{"item": rows[0][0], "current_qty": 0, "reorder_level": 0}]
-        
-        # Process the data to identify items that need to be reordered
-        reorder_items = []
-        for row in rows:
-            # Skip empty rows
-            if not row:
-                continue
-                
-            # Handle different data formats based on column count
-            if len(row) == 1:
-                # Only one column - treat as item name
-                reorder_items.append({
-                    "item": row[0],
-                    "current_qty": 0,
-                    "reorder_level": 0
-                })
-            elif len(row) >= 3:
-                # Assuming column structure: Item, Current Quantity, Reorder Level
-                item = row[0]
-                try:
-                    current_qty = int(row[1]) if row[1] else 0
-                    reorder_level = int(row[2]) if len(row) > 2 and row[2] else 0
-                except ValueError:
-                    # Skip rows with non-numeric quantity/reorder level
-                    current_qty = 0
-                    reorder_level = 0
-                    
-                reorder_items.append({
-                    "item": item,
-                    "current_qty": current_qty,
-                    "reorder_level": reorder_level
-                })
-            elif len(row) == 2:
-                # Just item and quantity
-                item = row[0]
-                try:
-                    current_qty = int(row[1]) if row[1] else 0
-                except ValueError:
-                    current_qty = 0
-                
-                reorder_items.append({
-                    "item": item,
-                    "current_qty": current_qty,
-                    "reorder_level": 0
-                })
-        
-        print(f"Found {len(reorder_items)} items that need to be reordered")
-        print(f"Data preview: {reorder_items[:2]}")
-        return reorder_items
+        return cell_value
     except Exception as e:
         print(f"Error accessing sheet: {str(e)}")
-        print(f"Make sure the sheet name is correct and exists in the spreadsheet.")
-        print(f"Available sheets: {', '.join(available_sheets)}")
+        # Try to list available sheets to help with troubleshooting
+        try:
+            spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheets = spreadsheet.get('sheets', [])
+            sheet_names = [sheet['properties']['title'] for sheet in sheets]
+            print(f"Available sheets: {', '.join(sheet_names)}")
+        except:
+            pass
         raise
 
-def format_inventory_message(reorder_items):
-    """Format the inventory data into a LINE message"""
-    print("Formatting inventory message")
+def format_message(cell_content):
+    """Format the cell content into the specified message structure"""
+    formatted_message = "🛒 Weekly Inventory Update 🛒\n\n"
+    formatted_message += "This week's inventory status:\n\n"
+    formatted_message += "Items to be re-ordered: \n"
+    formatted_message += cell_content
+    formatted_message += "\n\nPlease proceed with the necessary orders."
     
-    if not reorder_items:
-        return "✅ No items need to be reordered this week."
-    
-    # If we're working with raw data from a cell, just return it directly
-    if len(reorder_items) == 1 and not reorder_items[0].get("current_qty") and not reorder_items[0].get("reorder_level"):
-        return reorder_items[0]["item"]
-    
-    message = "🚨 INVENTORY REORDER ALERT 🚨\n\n"
-    message += "The following items need to be reordered:\n\n"
-    
-    for item in reorder_items:
-        # If there's a reorder level, include it
-        if item.get("reorder_level"):
-            message += f"• {item['item']}: {item['current_qty']} remaining (Reorder at {item['reorder_level']})\n"
-        else:
-            message += f"• {item['item']}: {item['current_qty']} remaining\n"
-    
-    return message
+    return formatted_message
 
 def send_line_message(message):
     """Send message to LINE groups"""
@@ -229,7 +114,7 @@ def send_line_message(message):
         raise ValueError("LINE_GROUP_IDS environment variable is not set")
     
     group_ids = group_ids_str.split(',')
-    print(f"Found {len(group_ids)} LINE group(s) to message")
+    print(f"Sending to {len(group_ids)} LINE group(s)")
     
     headers = {
         'Content-Type': 'application/json',
@@ -264,11 +149,11 @@ def main():
     try:
         print(f"Starting inventory update process at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
-        # Get inventory data from Google Sheets
-        reorder_items = get_inventory_data()
+        # Get cell content from Google Sheets
+        cell_content = get_cell_content()
         
         # Format the message
-        message = format_inventory_message(reorder_items)
+        message = format_message(cell_content)
         
         # Send the message to LINE groups
         send_line_message(message)
