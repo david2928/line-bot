@@ -25,15 +25,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Set up credentials
-        run: |
-          echo "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" > google_credentials.json
-          echo "GOOGLE_APPLICATION_CREDENTIALS=google_credentials.json" >> $GITHUB_ENV
-
       - name: Run inventory update
         env:
           CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
           CHANNEL_SECRET: ${{ secrets.CHANNEL_SECRET }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           LINE_GROUP_IDS: ${{ secrets.LINE_GROUP_IDS }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
         run: python src/inventory/update.py 

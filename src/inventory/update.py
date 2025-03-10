@@ -16,6 +16,40 @@ from datetime import datetime
 # Configuration
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 
+def get_credentials():
+    """Get Google service account credentials from environment variables"""
+    print("Setting up Google credentials")
+    
+    creds_json = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+    if not creds_json:
+        raise ValueError("GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable is not set")
+    
+    try:
+        # Try parsing as JSON
+        creds_info = json.loads(creds_json)
+        return service_account.Credentials.from_service_account_info(
+            creds_info, scopes=SCOPES)
+    except json.JSONDecodeError:
+        # If it's not valid JSON, it might be escaped or in a different format
+        print("Warning: Credentials not in valid JSON format, attempting to fix")
+        
+        # Try removing quotes if they wrap the entire string
+        if creds_json.startswith('"') and creds_json.endswith('"'):
+            creds_json = creds_json[1:-1]
+        
+        # Replace escaped quotes
+        creds_json = creds_json.replace('\\"', '"')
+        
+        try:
+            creds_info = json.loads(creds_json)
+            return service_account.Credentials.from_service_account_info(
+                creds_info, scopes=SCOPES)
+        except json.JSONDecodeError as e:
+            # If still failing, provide more detailed error
+            print(f"Error parsing credentials JSON: {e}")
+            print(f"First 20 characters of credentials: {creds_json[:20]}...")
+            raise ValueError("Invalid Google credentials format. Please ensure it's a valid JSON service account key")
+
 def get_inventory_data():
     """Fetch inventory data from Google Sheets"""
     print("Getting inventory data from Google Sheets")
@@ -24,13 +58,7 @@ def get_inventory_data():
     if not spreadsheet_id:
         raise ValueError("SPREADSHEET_ID environment variable is not set")
     
-    # Load credentials from the environment variable file path
-    creds_path = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-    if not creds_path or not os.path.exists(creds_path):
-        raise ValueError("GOOGLE_APPLICATION_CREDENTIALS environment variable is not set or file doesn't exist")
-    
-    credentials = service_account.Credentials.from_service_account_file(
-        creds_path, scopes=SCOPES)
+    credentials = get_credentials()
     
     # Create Google Sheets API service
     service = googleapiclient.discovery.build('sheets', 'v4', credentials=credentials)
