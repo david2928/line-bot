@@ -9,24 +9,31 @@ on:
   workflow_dispatch:
 
 jobs:
-  trigger-inventory-update:
+  inventory-update:
     runs-on: ubuntu-latest
     steps:
-      - id: 'auth'
-        name: 'Authenticate to Google Cloud'
-        uses: 'google-github-actions/auth@v1'
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+          python-version: '3.10'
 
-      - name: 'Set up Cloud SDK'
-        uses: 'google-github-actions/setup-gcloud@v1'
-      
-      - name: 'Get auth token for Cloud Run'
-        id: 'auth-token'
+      - name: Install dependencies
         run: |
-          echo "token=$(gcloud auth print-identity-token --audiences=https://line-inventory-bot-chxb6w667a-an.a.run.app/inventory/update)" >> $GITHUB_OUTPUT
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: 'Trigger inventory update endpoint'
+      - name: Set up credentials
         run: |
-          curl -X POST "https://line-inventory-bot-chxb6w667a-an.a.run.app/inventory/update" \
-            -H "Authorization: Bearer ${{ steps.auth-token.outputs.token }}" 
+          echo "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}" > google_credentials.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=google_credentials.json" >> $GITHUB_ENV
+
+      - name: Run inventory update
+        env:
+          CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
+          CHANNEL_SECRET: ${{ secrets.CHANNEL_SECRET }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          LINE_GROUP_IDS: ${{ secrets.LINE_GROUP_IDS }}
+        run: python src/inventory/update.py 
