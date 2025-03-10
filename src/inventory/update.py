@@ -50,6 +50,50 @@ def get_credentials():
             print(f"First 20 characters of credentials: {creds_json[:20]}...")
             raise ValueError("Invalid Google credentials format. Please ensure it's a valid JSON service account key")
 
+def get_sheet_info():
+    """Get sheet name and range from environment variables or use defaults"""
+    # Get sheet name from environment variable or use default
+    sheet_name = os.environ.get('SHEET_NAME', 'Last Entry')
+    print(f"Using sheet: '{sheet_name}'")
+    
+    # Get start cell from environment variable or use default
+    start_cell = os.environ.get('START_CELL', 'B12')
+    
+    # If end_cell is provided, make a range, otherwise use just the start_cell
+    end_cell = os.environ.get('END_CELL')
+    
+    if end_cell:
+        # If it's just a column letter (like 'D'), append row from start_cell
+        if end_cell.isalpha():
+            # Extract row number from start_cell
+            row_num = ''.join(filter(str.isdigit, start_cell))
+            if row_num:
+                end_cell = f"{end_cell}{row_num}"
+            range_str = f"'{sheet_name}'!{start_cell}:{end_cell}"
+        else:
+            range_str = f"'{sheet_name}'!{start_cell}:{end_cell}"
+    else:
+        # Just use the single cell
+        range_str = f"'{sheet_name}'!{start_cell}"
+    
+    print(f"Using range: {range_str}")
+    return range_str
+
+def list_all_sheets(service, spreadsheet_id):
+    """List all available sheets in the spreadsheet"""
+    try:
+        spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheets = spreadsheet.get('sheets', [])
+        
+        print("Available sheets in this spreadsheet:")
+        for sheet in sheets:
+            print(f"- {sheet['properties']['title']}")
+        
+        return [sheet['properties']['title'] for sheet in sheets]
+    except Exception as e:
+        print(f"Error listing sheets: {str(e)}")
+        return []
+
 def get_inventory_data():
     """Fetch inventory data from Google Sheets"""
     print("Getting inventory data from Google Sheets")
@@ -63,43 +107,91 @@ def get_inventory_data():
     # Create Google Sheets API service
     service = googleapiclient.discovery.build('sheets', 'v4', credentials=credentials)
     
-    # Fetch data from the inventory sheet
-    range_name = 'Inventory!A2:E'  # Adjust based on your sheet structure
+    # First, list all available sheets to help with troubleshooting
+    available_sheets = list_all_sheets(service, spreadsheet_id)
     
-    result = service.spreadsheets().values().get(
-        spreadsheetId=spreadsheet_id, range=range_name).execute()
+    # Get the range to read
+    range_name = get_sheet_info()
     
-    rows = result.get('values', [])
-    
-    if not rows:
-        print("No data found in the sheet")
-        return []
-    
-    # Process the data to identify items that need to be reordered
-    reorder_items = []
-    for row in rows:
-        # Skip rows with insufficient data
-        if len(row) < 3:
-            continue
-            
-        # Assuming column structure: Item, Current Quantity, Reorder Level
-        item = row[0]
-        try:
-            current_qty = int(row[1]) if row[1] else 0
-            reorder_level = int(row[2]) if len(row) > 2 and row[2] else 0
-        except ValueError:
-            # Skip rows with non-numeric quantity/reorder level
-            continue
-            
-        if current_qty <= reorder_level:
-            reorder_items.append({
-                'item': item,
-                'current_qty': current_qty,
-                'reorder_level': reorder_level
-            })
-    
-    print(f"Found {len(reorder_items)} items that need to be reordered")
-    return reorder_items
+    try:
+        # Fetch data from the sheet
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id, range=range_name).execute()
+        
+        rows = result.get('values', [])
+        
+        if not rows:
+            print("No data found in the sheet")
+            return []
+        
+        # The structure will depend on whether we're dealing with a range or single cell
+        # For simplicity in this example, we'll create a structure for reorder items
+        # based on the data we find
+        
+        # If it's a single cell or single row
+        if len(rows) == 1 and len(rows[0]) == 1:
+            print(f"Found single cell value: {rows[0][0]}")
+            # Assume this is a number representing items to reorder
+            try:
+                count = int(rows[0][0])
+                return [{"item": "Inventory items", "current_qty": count, "reorder_level": 0}]
+            except (ValueError, TypeError):
+                # If it's not a number, just return it as a message
+                return [{"item": rows[0][0], "current_qty": 0, "reorder_level": 0}]
+        
+        # Process the data to identify items that need to be reordered
+        reorder_items = []
+        for row in rows:
+            # Skip empty rows
+            if not row:
+                continue
+                
+            # Handle different data formats based on column count
+            if len(row) == 1:
+                # Only one column - treat as item name
+                reorder_items.append({
+                    "item": row[0],
+                    "current_qty": 0,
+                    "reorder_level": 0
+                })
+            elif len(row) >= 3:
+                # Assuming column structure: Item, Current Quantity, Reorder Level
+                item = row[0]
+                try:
+                    current_qty = int(row[1]) if row[1] else 0
+                    reorder_level = int(row[2]) if len(row) > 2 and row[2] else 0
+                except ValueError:
+                    # Skip rows with non-numeric quantity/reorder level
+                    current_qty = 0
+                    reorder_level = 0
+                    
+                reorder_items.append({
+                    "item": item,
+                    "current_qty": current_qty,
+                    "reorder_level": reorder_level
+                })
+            elif len(row) == 2:
+                # Just item and quantity
+                item = row[0]
+                try:
+                    current_qty = int(row[1]) if row[1] else 0
+                except ValueError:
+                    current_qty = 0
+                
+                reorder_items.append({
+                    "item": item,
+                    "current_qty": current_qty,
+                    "reorder_level": 0
+                })
+        
+        print(f"Found {len(reorder_items)} items that need to be reordered")
+        print(f"Data preview: {reorder_items[:2]}")
+        return reorder_items
+    except Exception as e:
+        print(f"Error accessing sheet: {str(e)}")
+        print(f"Make sure the sheet name is correct and exists in the spreadsheet.")
+        print(f"Available sheets: {', '.join(available_sheets)}")
+        raise
 
 def format_inventory_message(reorder_items):
     """Format the inventory data into a LINE message"""
@@ -108,11 +200,19 @@ def format_inventory_message(reorder_items):
     if not reorder_items:
         return "✅ No items need to be reordered this week."
     
+    # If we're working with raw data from a cell, just return it directly
+    if len(reorder_items) == 1 and not reorder_items[0].get("current_qty") and not reorder_items[0].get("reorder_level"):
+        return reorder_items[0]["item"]
+    
     message = "🚨 INVENTORY REORDER ALERT 🚨\n\n"
     message += "The following items need to be reordered:\n\n"
     
     for item in reorder_items:
-        message += f"• {item['item']}: {item['current_qty']} remaining (Reorder at {item['reorder_level']})\n"
+        # If there's a reorder level, include it
+        if item.get("reorder_level"):
+            message += f"• {item['item']}: {item['current_qty']} remaining (Reorder at {item['reorder_level']})\n"
+        else:
+            message += f"• {item['item']}: {item['current_qty']} remaining\n"
     
     return message
 
