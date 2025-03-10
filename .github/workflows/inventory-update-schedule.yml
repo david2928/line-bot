@@ -1,0 +1,32 @@
+name: Weekly Inventory Update
+
+on:
+  schedule:
+    # Runs at 8:30 AM Bangkok time (UTC+7) every Monday
+    # Note: GitHub Actions uses UTC time, so 01:30 UTC = 08:30 Bangkok
+    - cron: '30 1 * * 1'
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  trigger-inventory-update:
+    runs-on: ubuntu-latest
+    steps:
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - name: 'Set up Cloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v1'
+      
+      - name: 'Get auth token for Cloud Run'
+        id: 'auth-token'
+        run: |
+          echo "token=$(gcloud auth print-identity-token --audiences=https://line-inventory-bot-chxb6w667a-an.a.run.app/inventory/update)" >> $GITHUB_OUTPUT
+
+      - name: 'Trigger inventory update endpoint'
+        run: |
+          curl -X POST "https://line-inventory-bot-chxb6w667a-an.a.run.app/inventory/update" \
+            -H "Authorization: Bearer ${{ steps.auth-token.outputs.token }}" 
